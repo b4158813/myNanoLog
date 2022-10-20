@@ -1,1 +1,1 @@
-A A Low Latency C++11 Logging Library
+A Low Latency C++11 Logging Library
