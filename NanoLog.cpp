@@ -292,7 +292,7 @@ struct BufferBase {
 // 多生产者单消费者 环形缓冲区
 class RingBuffer : public BufferBase {
    public:
-    struct alignas(64) Item {
+    struct alignas(64) Item { // 内存对齐，对齐到64位
         Item()
             : flag(ATOMIC_FLAG_INIT), written(0), logline(LogLevel::INFO, nullptr, nullptr, 0) {}
         std::atomic_flag flag;
@@ -325,7 +325,7 @@ class RingBuffer : public BufferBase {
         item.written = 1;
         // 自动释放锁
     }
-    bool try_pop(NanoLogLine&& logline) {
+    bool try_pop(NanoLogLine& logline) {
         Item& item = m_ring[m_read_index % m_size];
         SpinLock spinlock(item.flag);
         if (item.written == 1) {
@@ -459,19 +459,123 @@ class QueueBuffer : public BufferBase {
     uint32_t m_read_index;
 };
 
-class FileWriter {
-    public:
-        FileWriter(const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb);
-        
-        void write(NanoLogLine& logline);
+class FileWriter {  // 控制数据写入文件的类
+   public:
+    FileWriter(const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
+        : m_log_file_roll_size_bytes(log_file_roll_size_mb * 1024 * 1024), m_name(log_directory + log_file_name) {
+        roll_file();  // 初始化，新开第一个文件，准备写入
+    }
 
-    private:
-        void roll_file(){
+    void write(NanoLogLine& logline) {           // 写logline数据操作
+        auto pos = m_os->tellp();                // 得到当前将要写入的缓冲区的位置
+        logline.stringify(*m_os);                // 写入logline数据
+        m_bytes_written += m_os->tellp() - pos;  // 获取刚才写入了多少字节数据
+        if (m_bytes_written > m_log_file_roll_size_bytes) {
+            roll_file();
+        }
+    }
 
+   private:
+    void roll_file() {  // 超过roll size了，需要新开一个文件写
+        if (m_os) {
+            m_os->flush();  // 刷新缓冲区，把未输出内容全部输出
+            m_os->close();  // 切断当前文件输出流和其他文件的关系
         }
 
-    private:
-    uint32_t m_file_number = 0;
+        m_bytes_written = 0;                                                   // 写入字节数清零
+        m_os.reset(new std::ofstream());                                       // 重置输出流对象
+        std::string log_file_name = m_name;                                    // 得到新的文件的名字
+        log_file_name.append("." + std::to_string(++m_file_number) + ".txt");  // 添加文件名后缀
+        m_os->open(log_file_name, std::ofstream::out | std::ofstream::trunc);  // 将输出流重定向到新的文件
+    }
+
+   private:
+    uint32_t m_file_number = 0;          // 写入的文件数量
+    std::streamoff m_bytes_written = 0;  // 已经在当前文件写了多少字节的数据
+    uint32_t const m_log_file_roll_size_bytes;
+    std::string const m_name;  // 需要输出的文件的名字（绝对路径）
+    std::unique_ptr<std::ofstream> m_os;
 };
+
+class NanoLogger {  // NanoLogger主类
+   public:
+    // 非保障型的，基于环形缓冲区（在高强度写入的情况下，之前未写入的数据可能丢失，但不会阻止写入，即 新的会覆盖旧的）
+    // 优点：充分利用空间，减少内存碎片产生
+    // 缺点：在密集型写入任务中，可能造成数据丢失
+    NanoLogger(NonGuaranteedLogger ngl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
+        : m_state(State::INIT), m_buffer_base(new RingBuffer(std::max(1u, ngl.ring_buffer_size_mb) * 1024 * 4)), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)) {
+            m_thread = std::thread([this]{this->pop();});
+            m_state.store(State::READY, std::memory_order_release);
+    }
+    
+    // 保障型的，基于队列的缓冲区，一定不会造成数据丢失
+    // 优点：保障数据安全性，一定可以输出到文件中，维护方便，代码简单
+    NanoLogger(GuaranteedLogger gl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
+        : m_state(State::INIT), m_buffer_base(new QueueBuffer()), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)){
+            m_thread = std::thread([this]{this->pop();});
+            m_state.store(State::READY, std::memory_order_release);
+    }
+    
+    // 析构
+    ~NanoLogger() {
+        m_state.store(State::SHUTDOWN); // state设置为关闭
+        m_thread.join(); // 回收线程资源
+    }
+
+    // 往缓冲区加数据，待写
+    void add(NanoLogLine&& logline) {
+        // 多态，根据BufferBase的派生类调用对应push函数
+        m_buffer_base->push(std::move(logline)); 
+    }
+
+    void pop(){
+        // 如果处于初始化状态，则循环等待直到状态为READY
+        while(m_state.load(std::memory_order_acquire) == State::INIT){
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+
+        // 初始化一个空的NanoLogLine对象
+        NanoLogLine logline(LogLevel::INFO, nullptr, nullptr, 0);
+        
+        // 如果NanoLogger是就绪状态，就循环尝试写数据到文件中
+        while(m_state.load() == State::READY){
+            // 如果对应缓冲区能够pop出一行数据进行写，则调用FileWriter的写入操作
+            if(m_buffer_base->try_pop(logline)){
+                m_file_writer.write(logline);
+            }else{
+                // 否则，就一直等到直到缓冲区能pop出一行进行写
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            }
+        }
+
+        // shutdown之后，可能缓冲区还剩有数据，因此
+        // 把缓冲区剩余内容pop出来写入文件
+        while(m_buffer_base->try_pop(logline)){
+            m_file_writer.write(logline);
+        }
+    }
+
+   private:
+    enum class State {
+        INIT,
+        READY,
+        SHUTDOWN
+    };
+
+    std::atomic<State> m_state; // 表示当前日志器的状态
+    std::unique_ptr<BufferBase> m_buffer_base; // 采用的缓冲区（多态）
+    FileWriter m_file_writer; // FileWriter的一个实例对象，用于将数据写入文件
+    std::thread m_thread; // 表示当前线程
+};
+
+std::unique_ptr<NanoLogger> nanologger;
+std::atomic<NanoLogger*> atomic_nanologger;
+
+bool NanoLog::operator==(NanoLogLine& logline){
+    atomic_nanologger.load(std::memory_order_acquire)->add(std::move(logline));
+    return true;
+}
+
+
 
 }  // namespace myNanoLog
