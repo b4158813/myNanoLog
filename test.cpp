@@ -1,4 +1,4 @@
-#include "NanoLog"
+#include "NanoLog.cpp"
 
 int main()
 {
@@ -6,7 +6,7 @@ int main()
   // This will create log files like /tmp/nanolog1.txt, /tmp/nanolog2.txt etc.
   // Log will roll to the next file after every 1MB.
   // This will initialize the guaranteed logger.
-  nanolog::initialize(nanolog::GuaranteedLogger(), "/home/wlx/NanoLog/", "nanolog", 1);
+  myNanoLog::initialize(myNanoLog::GuaranteedLogger(), "/home/wlx/myNanoLog/", "myNanoLog", 1);
   
   // Or if you want to use the non guaranteed logger -
   // ring_buffer_size_mb - LogLines are pushed into a mpsc ring buffer whose size
@@ -15,14 +15,14 @@ int main()
   // In this example ring_buffer_size_mb = 3.
   // nanolog::initialize(nanolog::NonGuaranteedLogger(3), "/tmp/", "nanolog", 1);
   
-  for (int i = 0; i < 5; ++i)
+  for (int i = 0; i < 15; ++i)
   {
-    LOG_INFO << "Sample NanoLog: " << i;
+    LOG_INFO << "Sample NanoLog: " << i << " over";
   }
   
   // Change log level at run-time.
-  nanolog::set_log_level(nanolog::LogLevel::CRIT);
-  LOG_WARN << "This log line will not be logged since we are at loglevel = CRIT";
+  myNanoLog::set_log_level(myNanoLog::LogLevel::CRIT);
+  LOG_WARN << "HAHAHAHAHA not printed!!!";
   
   return 0;
 }

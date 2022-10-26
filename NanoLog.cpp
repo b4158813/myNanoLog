@@ -14,7 +14,7 @@ uint64_t timestamp_now() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
-// 格式化时间
+// 格式化时间，并输出（中国时间！）
 void format_timestamp(std::ostream& os, uint64_t timestamp) {
     std::time_t time_t = timestamp / 1000000;
     time_t += 28800;  // UTC + 8 转成东八区中国时间！
@@ -39,6 +39,7 @@ struct TupleIndex<T, std::tuple<T, Types...>> {
     static constexpr const std::size_t value = 0;
 };
 
+// 泛型递归，用于获取当前是tuple模板参数的第几个类型
 template <typename T, typename U, typename... Types>
 struct TupleIndex<T, std::tuple<U, Types...>> {
     static constexpr const std::size_t value = 1 + TupleIndex<T, std::tuple<Types...>>::value;
@@ -59,7 +60,7 @@ const char* to_string(LogLevel loglevel) {
         case LogLevel::CRIT:
             return "CRIT";
     }
-    return "NONE";
+    return "NOT DEFINED";
 }
 
 // NanoLogLine 构造函数
@@ -138,6 +139,11 @@ void NanoLogLine::stringify(std::ostream& os) {
 
     // 输出剩余内容
     stringify(os, b, end);
+    
+    // 换行
+    os << std::endl;
+
+    // 如果level大于等于Critical等级了，就需要刷新缓冲区，防止一些错误没有输出
     if (loglevel >= LogLevel::CRIT) {
         os.flush();
     }
@@ -181,7 +187,7 @@ void NanoLogLine::stringify(std::ostream& os, char* start, char const* const end
 
 // 返回对应缓冲区（栈or堆）的尾部指针
 char* NanoLogLine::buffer() {
-    return (m_heap_buffer == nullptr ? &m_stack_buffer[m_bytes_used] : &(m_heap_buffer.get()[m_bytes_used]));
+    return (m_heap_buffer == nullptr ? &m_stack_buffer[m_bytes_used] : &(m_heap_buffer.get())[m_bytes_used]);
 }
 
 // 根据写入数据的大小自动调整（堆or栈）缓冲区大小
@@ -224,7 +230,7 @@ void NanoLogLine::encode_c_string(const char* arg, size_t length) {
     char* b = buffer();
     auto type_id = TupleIndex<char*, SupportedTypes>::value;
     *reinterpret_cast<uint8_t*>(b++) = static_cast<uint8_t>(type_id);
-    memcpy(b, arg, 1 + length + 1);
+    memcpy(b, arg, length + 1);
     m_bytes_used += 1 + length + 1;
 }
 
@@ -327,7 +333,7 @@ class RingBuffer : public BufferBase {
         item.written = 1;
         // 自动释放锁
     }
-    bool try_pop(NanoLogLine& logline) {
+    bool try_pop(NanoLogLine& logline) override{
         Item& item = m_ring[m_read_index % m_size];
         SpinLock spinlock(item.flag);
         if (item.written == 1) {
@@ -364,7 +370,7 @@ class Buffer {
         for (size_t i = 0; i <= size; ++i) {
             m_write_state[i].store(0, std::memory_order_relaxed);
         }
-        static_assert(sizeof(Item) == 256, "Unexpectec size != 256");
+        static_assert(sizeof(Item) == 256, "Unexpected size != 256");
     }
     ~Buffer() {
         uint32_t write_count = m_write_state[size].load();
@@ -378,7 +384,7 @@ class Buffer {
     bool push(NanoLogLine&& logline, const uint32_t write_index) {
         new (&m_buffer[write_index]) Item(std::move(logline));
         m_write_state[write_index].store(1, std::memory_order_release);
-        return m_write_state[size].fetch_add(1, std::memory_order_acquire);
+        return m_write_state[size].fetch_add(1, std::memory_order_acquire) + 1 == size;
     }
     bool try_pop(NanoLogLine& logline, const uint32_t read_index) {
         if (m_write_state[read_index].load(std::memory_order_acquire)) {
@@ -427,7 +433,7 @@ class QueueBuffer : public BufferBase {
         if (read_buffer == nullptr) {
             return false;
         }
-        if (bool success = read_buffer->try_pop(logline, m_read_index)) {
+        if (read_buffer->try_pop(logline, m_read_index)) {
             m_read_index++;
             if (m_read_index == Buffer::size) {
                 m_read_index = 0;

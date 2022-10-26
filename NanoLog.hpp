@@ -116,7 +116,7 @@ void initialize(NonGuaranteedLogger gl, const std::string& log_dir, const std::s
 
 }  // namespace myNanoLog
 
-#define NANO_LOG(LEVEL) nanolog::NanoLog() == nanolog::NanoLogLine(LEVEL, __FILE__, __FUNCTION__, __LINE__)
-#define LOG_INFO nanolog::is_logged(nanolog::LogLevel::INFO) && NANO_LOG(nanolog::LogLevel::INFO)
-#define LOG_WARN nanolog::is_logged(nanolog::LogLevel::WARN) && NANO_LOG(nanolog::LogLevel::WARN)
-#define LOG_CRIT nanolog::is_logged(nanolog::LogLevel::CRIT) && NANO_LOG(nanolog::LogLevel::CRIT)
+#define NANO_LOG(LEVEL) myNanoLog::NanoLog() == myNanoLog::NanoLogLine(LEVEL, __FILE__, __FUNCTION__, __LINE__)
+#define LOG_INFO myNanoLog::is_logged(myNanoLog::LogLevel::INFO) && NANO_LOG(myNanoLog::LogLevel::INFO)
+#define LOG_WARN myNanoLog::is_logged(myNanoLog::LogLevel::WARN) && NANO_LOG(myNanoLog::LogLevel::WARN)
+#define LOG_CRIT myNanoLog::is_logged(myNanoLog::LogLevel::CRIT) && NANO_LOG(myNanoLog::LogLevel::CRIT)
