@@ -115,3 +115,8 @@ void initialize(GuaranteedLogger gl, const std::string& log_dir, const std::stri
 void initialize(NonGuaranteedLogger gl, const std::string& log_dir, const std::string& log_file_name, uint32_t log_file_maxsize_mb);
 
 }  // namespace myNanoLog
+
+#define NANO_LOG(LEVEL) nanolog::NanoLog() == nanolog::NanoLogLine(LEVEL, __FILE__, __FUNCTION__, __LINE__)
+#define LOG_INFO nanolog::is_logged(nanolog::LogLevel::INFO) && NANO_LOG(nanolog::LogLevel::INFO)
+#define LOG_WARN nanolog::is_logged(nanolog::LogLevel::WARN) && NANO_LOG(nanolog::LogLevel::WARN)
+#define LOG_CRIT nanolog::is_logged(nanolog::LogLevel::CRIT) && NANO_LOG(nanolog::LogLevel::CRIT)

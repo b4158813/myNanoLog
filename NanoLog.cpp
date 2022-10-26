@@ -573,19 +573,21 @@ class NanoLogger {  // NanoLogger主类
     std::thread m_thread;                       // 表示当前线程
 };
 
-std::unique_ptr<NanoLogger> nanologger;
-std::atomic<NanoLogger*> atomic_nanologger;
+std::unique_ptr<NanoLogger> nanologger; // 主NanoLogger实例对象
+std::atomic<NanoLogger*> atomic_nanologger; // 
 
 bool NanoLog::operator==(NanoLogLine& logline) {
     atomic_nanologger.load(std::memory_order_acquire)->add(std::move(logline));
     return true;
 }
 
+// 初始化非保障型日志器
 void initialize(NonGuaranteedLogger ngl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb) {
     nanologger.reset(new NanoLogger(ngl, log_directory, log_file_name, log_file_roll_size_mb));
     atomic_nanologger.store(nanologger.get(), std::memory_order_seq_cst);
 }
 
+// 初始化保障型日志器
 void initialize(GuaranteedLogger gl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb) {
     nanologger.reset(new NanoLogger(gl, log_directory, log_file_name, log_file_roll_size_mb));
     atomic_nanologger.store(nanologger.get(), std::memory_order_seq_cst);
@@ -593,10 +595,12 @@ void initialize(GuaranteedLogger gl, const std::string& log_directory, const std
 
 std::atomic<uint32_t> loglevel{0};
 
+// 用户可以动态修改level等级
 void set_log_level(LogLevel level) {
     loglevel.store(static_cast<uint32_t>(level), std::memory_order_release);
 }
 
+// 判断是否可打印此条log，即当前level >= 设定的level
 bool is_logged(LogLevel level) {
     return static_cast<uint32_t>(level) >= loglevel.load(std::memory_order_relaxed);
 }
