@@ -179,10 +179,12 @@ void NanoLogLine::stringify(std::ostream& os, char* start, char const* const end
     }
 }
 
+// 返回对应缓冲区（栈or堆）的尾部指针
 char* NanoLogLine::buffer() {
     return (m_heap_buffer == nullptr ? &m_stack_buffer[m_bytes_used] : &(m_heap_buffer.get()[m_bytes_used]));
 }
 
+// 根据写入数据的大小自动调整（堆or栈）缓冲区大小
 void NanoLogLine::resize_buffer_if_needed(size_t additional_bytes) {
     size_t const required_size = m_bytes_used + additional_bytes;
 
@@ -267,7 +269,7 @@ NanoLogLine& NanoLogLine::operator<<(char arg) {
     return *this;
 }
 
-// 封装的自旋锁
+// 封装的自旋锁类
 struct SpinLock {
     SpinLock(std::atomic_flag& flag)
         : m_flag(flag) {
@@ -292,7 +294,7 @@ struct BufferBase {
 // 多生产者单消费者 环形缓冲区
 class RingBuffer : public BufferBase {
    public:
-    struct alignas(64) Item { // 内存对齐，对齐到64位
+    struct alignas(64) Item {  // 内存对齐，对齐到64位
         Item()
             : flag(ATOMIC_FLAG_INIT), written(0), logline(LogLevel::INFO, nullptr, nullptr, 0) {}
         std::atomic_flag flag;
@@ -345,6 +347,7 @@ class RingBuffer : public BufferBase {
     uint32_t m_read_index;
 };
 
+// 普通缓冲区
 class Buffer {
    public:
     struct Item {
@@ -391,6 +394,7 @@ class Buffer {
     std::atomic<uint32_t> m_write_state[size + 1];
 };
 
+// 基于队列的缓冲区
 class QueueBuffer : public BufferBase {
    public:
     QueueBuffer(const QueueBuffer&) = delete;
@@ -459,7 +463,8 @@ class QueueBuffer : public BufferBase {
     uint32_t m_read_index;
 };
 
-class FileWriter {  // 控制数据写入文件的类
+// 控制数据写入文件的类
+class FileWriter {
    public:
     FileWriter(const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
         : m_log_file_roll_size_bytes(log_file_roll_size_mb * 1024 * 1024), m_name(log_directory + log_file_name) {
@@ -504,45 +509,45 @@ class NanoLogger {  // NanoLogger主类
     // 缺点：在密集型写入任务中，可能造成数据丢失
     NanoLogger(NonGuaranteedLogger ngl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
         : m_state(State::INIT), m_buffer_base(new RingBuffer(std::max(1u, ngl.ring_buffer_size_mb) * 1024 * 4)), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)) {
-            m_thread = std::thread([this]{this->pop();});
-            m_state.store(State::READY, std::memory_order_release);
+        m_thread = std::thread([this] { this->pop(); });
+        m_state.store(State::READY, std::memory_order_release);
     }
-    
+
     // 保障型的，基于队列的缓冲区，一定不会造成数据丢失
     // 优点：保障数据安全性，一定可以输出到文件中，维护方便，代码简单
     NanoLogger(GuaranteedLogger gl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
-        : m_state(State::INIT), m_buffer_base(new QueueBuffer()), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)){
-            m_thread = std::thread([this]{this->pop();});
-            m_state.store(State::READY, std::memory_order_release);
+        : m_state(State::INIT), m_buffer_base(new QueueBuffer()), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)) {
+        m_thread = std::thread([this] { this->pop(); });
+        m_state.store(State::READY, std::memory_order_release);
     }
-    
+
     // 析构
     ~NanoLogger() {
-        m_state.store(State::SHUTDOWN); // state设置为关闭
-        m_thread.join(); // 回收线程资源
+        m_state.store(State::SHUTDOWN);  // state设置为关闭
+        m_thread.join();                 // 回收线程资源
     }
 
     // 往缓冲区加数据，待写
     void add(NanoLogLine&& logline) {
         // 多态，根据BufferBase的派生类调用对应push函数
-        m_buffer_base->push(std::move(logline)); 
+        m_buffer_base->push(std::move(logline));
     }
 
-    void pop(){
+    void pop() {
         // 如果处于初始化状态，则循环等待直到状态为READY
-        while(m_state.load(std::memory_order_acquire) == State::INIT){
+        while (m_state.load(std::memory_order_acquire) == State::INIT) {
             std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
 
         // 初始化一个空的NanoLogLine对象
         NanoLogLine logline(LogLevel::INFO, nullptr, nullptr, 0);
-        
+
         // 如果NanoLogger是就绪状态，就循环尝试写数据到文件中
-        while(m_state.load() == State::READY){
+        while (m_state.load() == State::READY) {
             // 如果对应缓冲区能够pop出一行数据进行写，则调用FileWriter的写入操作
-            if(m_buffer_base->try_pop(logline)){
+            if (m_buffer_base->try_pop(logline)) {
                 m_file_writer.write(logline);
-            }else{
+            } else {
                 // 否则，就一直等到直到缓冲区能pop出一行进行写
                 std::this_thread::sleep_for(std::chrono::microseconds(50));
             }
@@ -550,7 +555,7 @@ class NanoLogger {  // NanoLogger主类
 
         // shutdown之后，可能缓冲区还剩有数据，因此
         // 把缓冲区剩余内容pop出来写入文件
-        while(m_buffer_base->try_pop(logline)){
+        while (m_buffer_base->try_pop(logline)) {
             m_file_writer.write(logline);
         }
     }
@@ -562,20 +567,38 @@ class NanoLogger {  // NanoLogger主类
         SHUTDOWN
     };
 
-    std::atomic<State> m_state; // 表示当前日志器的状态
-    std::unique_ptr<BufferBase> m_buffer_base; // 采用的缓冲区（多态）
-    FileWriter m_file_writer; // FileWriter的一个实例对象，用于将数据写入文件
-    std::thread m_thread; // 表示当前线程
+    std::atomic<State> m_state;                 // 表示当前日志器的状态
+    std::unique_ptr<BufferBase> m_buffer_base;  // 采用的缓冲区（多态）
+    FileWriter m_file_writer;                   // FileWriter的一个实例对象，用于将数据写入文件
+    std::thread m_thread;                       // 表示当前线程
 };
 
 std::unique_ptr<NanoLogger> nanologger;
 std::atomic<NanoLogger*> atomic_nanologger;
 
-bool NanoLog::operator==(NanoLogLine& logline){
+bool NanoLog::operator==(NanoLogLine& logline) {
     atomic_nanologger.load(std::memory_order_acquire)->add(std::move(logline));
     return true;
 }
 
+void initialize(NonGuaranteedLogger ngl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb) {
+    nanologger.reset(new NanoLogger(ngl, log_directory, log_file_name, log_file_roll_size_mb));
+    atomic_nanologger.store(nanologger.get(), std::memory_order_seq_cst);
+}
 
+void initialize(GuaranteedLogger gl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb) {
+    nanologger.reset(new NanoLogger(gl, log_directory, log_file_name, log_file_roll_size_mb));
+    atomic_nanologger.store(nanologger.get(), std::memory_order_seq_cst);
+}
+
+std::atomic<uint32_t> loglevel{0};
+
+void set_log_level(LogLevel level) {
+    loglevel.store(static_cast<uint32_t>(level), std::memory_order_release);
+}
+
+bool is_logged(LogLevel level) {
+    return static_cast<uint32_t>(level) >= loglevel.load(std::memory_order_relaxed);
+}
 
 }  // namespace myNanoLog
