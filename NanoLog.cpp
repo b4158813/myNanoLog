@@ -53,12 +53,16 @@ using SupportedTypes = std::tuple<char, uint32_t, uint64_t, int32_t, int64_t, do
 
 const char* to_string(LogLevel loglevel) {
     switch (loglevel) {
+        case LogLevel::DEBUG:
+            return "DEBUG";
         case LogLevel::INFO:
             return "INFO";
-        case LogLevel::WARN:
-            return "WARN";
-        case LogLevel::CRIT:
-            return "CRIT";
+        case LogLevel::WARNING:
+            return "WARNING";
+        case LogLevel::ERROR:
+            return "ERROR";
+        case LogLevel::CRITICAL:
+            return "CRITICAL";
     }
     return "NOT DEFINED";
 }
@@ -143,8 +147,8 @@ void NanoLogLine::stringify(std::ostream& os) {
     // 换行
     os << std::endl;
 
-    // 如果level大于等于Critical等级了，就需要刷新缓冲区，防止一些错误没有输出
-    if (loglevel >= LogLevel::CRIT) {
+    // 如果level大于等于ERROR等级了，就需要刷新缓冲区，防止一些错误没有输出
+    if (loglevel >= LogLevel::ERROR) {
         os.flush();
     }
 }
@@ -381,6 +385,7 @@ class Buffer {
     }
     Buffer(const Buffer&) = delete;
     Buffer& operator=(const Buffer&) = delete;
+    // 往buffer里加数据，返回buffer有没有满
     bool push(NanoLogLine&& logline, const uint32_t write_index) {
         new (&m_buffer[write_index]) Item(std::move(logline));
         m_write_state[write_index].store(1, std::memory_order_release);
@@ -408,14 +413,14 @@ class QueueBuffer : public BufferBase {
 
     QueueBuffer()
         : m_current_read_buffer(nullptr), m_write_index(0), m_flag(ATOMIC_FLAG_INIT), m_read_index(0) {
-        steup_next_write_buffer();
+        setup_next_write_buffer();
     }
 
     void push(NanoLogLine&& logline) override {
         uint32_t write_index = m_write_index.fetch_add(1, std::memory_order_relaxed);
         if (write_index < Buffer::size) {
             if (m_current_write_buffer.load(std::memory_order_acquire)->push(std::move(logline), write_index)) {
-                steup_next_write_buffer();
+                setup_next_write_buffer();
             }
         } else {
             while (m_write_index.load(std::memory_order_acquire) >= Buffer::size) {
@@ -447,7 +452,7 @@ class QueueBuffer : public BufferBase {
     }
 
    private:
-    void steup_next_write_buffer() {
+    void setup_next_write_buffer() {
         std::unique_ptr<Buffer> next_write_buffer(new Buffer());
         m_current_write_buffer.store(next_write_buffer.get(), std::memory_order_release);
         SpinLock spinlock(m_flag);
@@ -461,7 +466,7 @@ class QueueBuffer : public BufferBase {
     }
 
    private:
-    std::queue<std::unique_ptr<Buffer>> m_buffers;
+    std::queue<std::unique_ptr<Buffer>> m_buffers; // std::atomic不能用于实现std::queue的各种操作!!!
     std::atomic<Buffer*> m_current_write_buffer;
     Buffer* m_current_read_buffer;
     std::atomic<uint32_t> m_write_index;
@@ -479,7 +484,7 @@ class FileWriter {
 
     void write(NanoLogLine& logline) {           // 写logline数据操作
         auto pos = m_os->tellp();                // 得到当前将要写入的缓冲区的位置
-        logline.stringify(*m_os);                // 写入logline数据
+        logline.stringify(*m_os);                // 写入logline数据到文件中
         m_bytes_written += m_os->tellp() - pos;  // 获取刚才写入了多少字节数据
         if (m_bytes_written > m_log_file_roll_size_bytes) {
             roll_file();
@@ -501,9 +506,9 @@ class FileWriter {
     }
 
    private:
-    uint32_t m_file_number = 0;          // 写入的文件数量
+    uint32_t m_file_number = 0;          // 当前正在写的文件的编号
     std::streamoff m_bytes_written = 0;  // 已经在当前文件写了多少字节的数据
-    uint32_t const m_log_file_roll_size_bytes;
+    uint32_t const m_log_file_roll_size_bytes; // 自定义的文件大小阈值
     std::string const m_name;  // 需要输出的文件的名字（绝对路径）
     std::unique_ptr<std::ofstream> m_os;
 };
@@ -580,7 +585,7 @@ class NanoLogger {  // NanoLogger主类
 };
 
 std::unique_ptr<NanoLogger> nanologger; // 主NanoLogger实例对象
-std::atomic<NanoLogger*> atomic_nanologger; // 
+std::atomic<NanoLogger*> atomic_nanologger; // 将NanoLogger设定成原子变量
 
 bool NanoLog::operator==(NanoLogLine& logline) {
     atomic_nanologger.load(std::memory_order_acquire)->add(std::move(logline));

@@ -7,9 +7,11 @@
 namespace myNanoLog {
 
 enum class LogLevel : uint8_t {
+    DEBUG,
     INFO,
-    WARN,
-    CRIT
+    WARNING,
+    ERROR,
+    CRITICAL
 };
 
 class NanoLogLine {
@@ -104,8 +106,7 @@ struct NonGuaranteedLogger {
     uint32_t ring_buffer_size_mb;
 };
 
-struct GuaranteedLogger {
-};
+struct GuaranteedLogger {};
 
 /* 初始化日志系统
 
@@ -117,6 +118,8 @@ void initialize(NonGuaranteedLogger gl, const std::string& log_dir, const std::s
 }  // namespace myNanoLog
 
 #define NANO_LOG(LEVEL) myNanoLog::NanoLog() == myNanoLog::NanoLogLine(LEVEL, __FILE__, __FUNCTION__, __LINE__)
-#define LOG_INFO myNanoLog::is_logged(myNanoLog::LogLevel::INFO) && NANO_LOG(myNanoLog::LogLevel::INFO)
-#define LOG_WARN myNanoLog::is_logged(myNanoLog::LogLevel::WARN) && NANO_LOG(myNanoLog::LogLevel::WARN)
-#define LOG_CRIT myNanoLog::is_logged(myNanoLog::LogLevel::CRIT) && NANO_LOG(myNanoLog::LogLevel::CRIT)
+#define LOG_INFO myNanoLog::is_logged(myNanoLog::LogLevel::DEBUG) && NANO_LOG(myNanoLog::LogLevel::DEBUG)
+#define LOG_WARN myNanoLog::is_logged(myNanoLog::LogLevel::INFO) && NANO_LOG(myNanoLog::LogLevel::INFO)
+#define LOG_CRIT myNanoLog::is_logged(myNanoLog::LogLevel::WARNING) && NANO_LOG(myNanoLog::LogLevel::WARNING)
+#define LOG_WARN myNanoLog::is_logged(myNanoLog::LogLevel::ERROR) && NANO_LOG(myNanoLog::LogLevel::ERROR)
+#define LOG_CRIT myNanoLog::is_logged(myNanoLog::LogLevel::CRITICAL) && NANO_LOG(myNanoLog::LogLevel::CRITICAL)
