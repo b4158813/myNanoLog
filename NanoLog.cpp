@@ -1,4 +1,5 @@
 #include "NanoLog.hpp"
+#include "SpinLock.cpp"
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -8,7 +9,7 @@
 #include <thread>
 #include <tuple>
 
-namespace {
+
 // 获取精确到μs的时间
 uint64_t timestamp_now() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -45,7 +46,9 @@ struct TupleIndex<T, std::tuple<U, Types...>> {
     static constexpr const std::size_t value = 1 + TupleIndex<T, std::tuple<Types...>>::value;
 };
 
-}  // namespace
+
+/*---------------------------------------------------------------------------*/
+
 
 namespace myNanoLog {
 
@@ -279,22 +282,6 @@ NanoLogLine& NanoLogLine::operator<<(char arg) {
     return *this;
 }
 
-// 封装的自旋锁类
-struct SpinLock {
-    SpinLock(std::atomic_flag& flag)
-        : m_flag(flag) {
-        while (m_flag.test_and_set(std::memory_order_acquire)) {
-        }  // 拿锁
-    }
-
-    ~SpinLock() {
-        m_flag.clear(std::memory_order_release);  // 释放锁
-    }
-
-   private:
-    std::atomic_flag& m_flag;
-};
-
 struct BufferBase {
     virtual ~BufferBase() = default;
     virtual void push(NanoLogLine&& logline) = 0;
@@ -482,7 +469,7 @@ class FileWriter {
         roll_file();  // 初始化，新开第一个文件，准备写入
     }
 
-    void write(NanoLogLine& logline) {           // 写logline数据操作
+    void write(myNanoLog::NanoLogLine& logline) {           // 写logline数据操作
         auto pos = m_os->tellp();                // 得到当前将要写入的缓冲区的位置
         logline.stringify(*m_os);                // 写入logline数据到文件中
         m_bytes_written += m_os->tellp() - pos;  // 获取刚才写入了多少字节数据
@@ -584,7 +571,7 @@ class NanoLogger {  // NanoLogger主类
     std::thread m_thread;                       // 表示当前线程
 };
 
-std::unique_ptr<NanoLogger> nanologger; // 主NanoLogger实例对象
+std::unique_ptr<NanoLogger> nanologger;     // 主NanoLogger实例对象
 std::atomic<NanoLogger*> atomic_nanologger; // 将NanoLogger设定成原子变量
 
 bool NanoLog::operator==(NanoLogLine& logline) {

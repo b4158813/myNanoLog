@@ -3,8 +3,8 @@
 int main() {
 
     // 初始化一个保障型日志
-    myNanoLog::initialize(myNanoLog::GuaranteedLogger(), "/home/wlx/myNanoLog/", "myNanoLog_ngl", 1);
-    // nanolog::initialize(nanolog::NonGuaranteedLogger(3), "/tmp/", "nanolog", 1);
+    myNanoLog::initialize(myNanoLog::GuaranteedLogger(), "/home/wlx/myNanoLog/", "myNanoLog", 1);
+    // nanolog::initialize(nanolog::NonGuaranteedLogger(3), "/home/wlx/myNanoLog/", "myNanoLog_ngl", 1);
 
     // 测试
     for (int i = 0; i < 15; ++i) {
