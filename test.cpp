@@ -8,12 +8,12 @@ int main() {
 
     // 测试
     for (int i = 0; i < 15; ++i) {
-        LOG_INFO << "Sample NanoLog: " << i << " over";
+        LOG_DEBUG << "Sample NanoLog: " << i << " over";
     }
 
-    // 可以实时修改日志等级
-    myNanoLog::set_log_level(myNanoLog::LogLevel::CRIT);
-    LOG_WARN << "HAHAHAHAHA not printed!!!";
+    // 可以实时修改日志等级，例如这里修改成CRITICAL等级
+    myNanoLog::set_log_level(myNanoLog::LogLevel::CRITICAL);
+    LOG_WARNING << "HAHAHAHAHA not printed!!!";
 
     return 0;
 }
