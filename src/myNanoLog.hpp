@@ -286,7 +286,7 @@ class NanoLogger {  // NanoLogger主类
     // 优点：充分利用空间，减少内存碎片产生
     // 缺点：在密集型写入任务中，可能造成数据丢失
     NanoLogger(NonGuaranteedLogger ngl, const std::string& log_directory, const std::string& log_file_name, uint32_t log_file_roll_size_mb)
-        : m_state(State::INIT), m_buffer_base(new RingBuffer(std::max(1u, ngl.ring_buffer_size_mb) * 1024 * 4)), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)) {
+        : m_state(State::INIT), m_buffer_base(new RingBuffer(std::max(1u, ngl.ring_buffer_size_mb) * 1024 * 1024 / 256)), m_file_writer(log_directory, log_file_name, std::max(1u, log_file_roll_size_mb)) {
         m_thread = std::thread([this] { this->pop(); });
         m_state.store(State::READY, std::memory_order_release);
     }

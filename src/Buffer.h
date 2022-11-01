@@ -4,15 +4,17 @@
 #include "SpinLock.hpp"
 
 namespace myNanoLog {
+/*---------------------------------------------------------------------------------------*/
 struct BufferBase {
     virtual ~BufferBase() = default;
-    virtual void push(NanoLogLine&& logline) = 0;
-    virtual bool try_pop(NanoLogLine& logline) = 0;
+    virtual void push(NanoLogLine&& logline) = 0; // 往缓冲区加数据，待写
+    virtual bool try_pop(NanoLogLine& logline) = 0; // 尝试将数据写入文件
 };
-
+/*---------------------------------------------------------------------------------------*/
 // 多生产者单消费者 环形缓冲区
 class RingBuffer : public BufferBase {
    public:
+    // 一个Item 占256字节
     struct alignas(64) Item {  // 内存对齐，对齐到64位
         Item()
             : flag(ATOMIC_FLAG_INIT), written(0), logline(LogLevel::INFO, nullptr, nullptr, 0) {}
@@ -37,7 +39,7 @@ class RingBuffer : public BufferBase {
     char pad[64];
     uint32_t m_read_index;
 };
-
+/*---------------------------------------------------------------------------------------*/
 // 普通缓冲区
 class Buffer {
    public:
@@ -62,7 +64,7 @@ class Buffer {
     Item* m_buffer;
     std::atomic<uint32_t> m_write_state[size + 1];
 };
-
+/*---------------------------------------------------------------------------------------*/
 // 基于队列的缓冲区
 class QueueBuffer : public BufferBase {
    public:
@@ -77,12 +79,12 @@ class QueueBuffer : public BufferBase {
     Buffer* get_next_read_buffer();
 
    private:
-    std::queue<std::unique_ptr<Buffer>> m_buffers;  // std::atomic不能用于实现std::queue的各种操作!!!
-    std::atomic<Buffer*> m_current_write_buffer;
-    Buffer* m_current_read_buffer;
+    std::queue<std::unique_ptr<Buffer>> m_buffers;  // 注意这里不能用std::atomic套std::queue或者反过来!!!
+    std::atomic<Buffer*> m_current_write_buffer; // 写操作需要考虑线程安全
     std::atomic<uint32_t> m_write_index;
-    std::atomic_flag m_flag;
+    Buffer* m_current_read_buffer;
     uint32_t m_read_index;
+    std::atomic_flag m_flag;
 };
 
 }  // namespace myNanoLog
