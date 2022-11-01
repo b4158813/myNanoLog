@@ -26,7 +26,7 @@ void FileWriter::roll_file() {  // 超过roll size了，需要新开一个文件
     m_bytes_written = 0;                                                   // 写入字节数清零
     m_os.reset(new std::ofstream());                                       // 重置输出流对象
     std::string log_file_name = m_name;                                    // 得到新的文件的名字
-    log_file_name.append("." + std::to_string(++m_file_number) + ".txt");  // 添加文件名后缀
+    log_file_name.append("_" + std::to_string(++m_file_number) + ".txt");  // 添加文件名后缀
     m_os->open(log_file_name, std::ofstream::out | std::ofstream::trunc);  // 将输出流重定向到新的文件
 }
 

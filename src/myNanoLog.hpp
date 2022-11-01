@@ -1,4 +1,3 @@
-#include "myNanoLog.h"
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -9,6 +8,9 @@
 #include <tuple>
 #include "Buffer.cpp"
 #include "FileWriter.cpp"
+#include "myNanoLog.h"
+
+namespace myNanoLog {
 
 // 获取精确到μs的时间
 uint64_t timestamp_now() {
@@ -47,8 +49,6 @@ struct TupleIndex<T, std::tuple<U, Types...>> {
 };
 
 /*---------------------------------------------------------------------------------------*/
-
-namespace myNanoLog {
 
 using SupportedTypes = std::tuple<char, uint32_t, uint64_t, int32_t, int64_t, double, NanoLogLine::string_literal_t, char*>;
 
