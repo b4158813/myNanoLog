@@ -51,9 +51,25 @@ void test_diff_thread_GL(){
     }
 }
 
-int main() {
-    test_diff_thread_NGL();
-    // test_diff_thread_GL();
+void print_usage() {
+    char const* const executable = "test_threadcount";
+    printf("Usage \n1. %s GL   (for GuaranteedLogger)\n2. %s NGL   (for NonGuaranteedLogger)\n", executable, executable);
+}
+
+
+int main(int argc, char **argv) {
+    if(argc != 2){
+        print_usage();
+        return 0;
+    }
+    if(strcmp(argv[1], "NGL") == 0){
+        test_diff_thread_NGL();
+    }else if(strcmp(argv[1], "GL") == 0){
+        test_diff_thread_GL();
+    }else{
+        print_usage();
+        return 0;
+    }
 
     return 0;
 }
