@@ -6,7 +6,7 @@ add header to your code `#include "myNanoLog"`
 
 ## Latency test
 
-运行机器：华为云ECS服务器 1vCPUs | 2GiB
+运行机器：华为云ECS服务器 CentOS 8.2 64bit 1vCPUs | 2GiB
 
 ### 不同线程数下的NGL和GL对比
 
