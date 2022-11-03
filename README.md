@@ -6,6 +6,8 @@ add header to your code `#include "myNanoLog"`
 
 ## Latency test
 
+运行机器：华为云ECS服务器 1vCPUs | 2GiB
+
 ### 不同线程数下的NGL和GL对比
 
 <img src="https://blog-1301883815.cos.ap-nanjing.myqcloud.com/img/1667320716614.png" alt="GL" width=375 /><img src="https://blog-1301883815.cos.ap-nanjing.myqcloud.com/img/1667320799329.png" alt="NGL" width=380 />
